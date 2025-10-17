@@ -7,13 +7,13 @@ import { SearchHistory } from './components/SearchHistory';
 import { SearchCategories } from './components/SearchCategories';
 import { ThemeToggle } from './components/ThemeToggle';
 import { LogoIcon, MicrophoneIcon as MicOnIcon, SparklesIcon } from './components/icons';
-import { searchWithGemini, analyzeTextWithGemini, getRelatedQuestions, generateImages, factCheckText } from './services/geminiService';
+import { initializeAi, getAiInstance, searchWithGemini, analyzeTextWithGemini, getRelatedQuestions, generateImages, factCheckText } from './services/geminiService';
 import type { Source, Insights, SearchFilters, GeneratedImage, SummaryLength, FactCheckResult } from './types';
 import { AdvancedFilters } from './components/AdvancedFilters';
 import { ImageResultDisplay } from './components/ImageResultDisplay';
 import { RelatedQuestions } from './components/RelatedQuestions';
 import { SearchModeToggle } from './components/SearchModeToggle';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { LiveServerMessage, Modality, Blob } from '@google/genai';
 import { FileReaderUI } from './components/FileReaderUI';
 import { PodcastCreatorUI } from './components/PodcastCreatorUI';
 
@@ -78,8 +78,6 @@ function createBlob(data: Float32Array): Blob {
 }
 // --- End Audio Helper Functions ---
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-
 type TranscriptionTurn = {
     speaker: 'user' | 'model';
     text: string;
@@ -89,6 +87,10 @@ type TranscriptionTurn = {
 type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast';
 
 const App: React.FC = () => {
+  // API Key State
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [isApiReady, setIsApiReady] = useState(false);
+
   // Core state
   const [currentQuery, setCurrentQuery] = useState('');
   const [searchResult, setSearchResult] = useState('');
@@ -185,6 +187,34 @@ const App: React.FC = () => {
       if (storedHistory) setHistory(JSON.parse(storedHistory));
     } catch (e) { console.error("Failed to load history", e); }
   }, []);
+
+  // API Key initialization effect
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('geminiApiKey');
+    if (storedApiKey) {
+      try {
+        initializeAi(storedApiKey);
+        setApiKey(storedApiKey);
+        setIsApiReady(true);
+      } catch (error) {
+        console.error("Failed to initialize with stored API key:", error);
+        localStorage.removeItem('geminiApiKey'); // Clear bad key
+      }
+    }
+  }, []);
+
+  const handleApiKeySubmit = (key: string) => {
+    try {
+      initializeAi(key);
+      localStorage.setItem('geminiApiKey', key);
+      setApiKey(key);
+      setIsApiReady(true);
+      setError(null);
+    } catch (error) {
+      console.error("API Key initialization failed:", error);
+      setError("فشل تهيئة مفتاح API. يرجى التحقق من المفتاح والمحاولة مرة أخرى.");
+    }
+  };
 
   const updateHistory = (newQuery: string) => {
     const updatedHistory = [newQuery, ...history.filter(h => h !== newQuery)].slice(0, MAX_HISTORY_LENGTH);
@@ -346,7 +376,7 @@ const App: React.FC = () => {
       const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
       scriptProcessorRef.current = scriptProcessor;
 
-      sessionPromiseRef.current = ai.live.connect({
+      sessionPromiseRef.current = getAiInstance().live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
           onopen: () => {
@@ -468,6 +498,10 @@ const App: React.FC = () => {
       };
   }, [isLiveConnected, handleStopLiveSession]);
 
+
+  if (!isApiReady) {
+    return <ApiKeyInput onSubmit={handleApiKeySubmit} error={error} />;
+  }
 
   return (
     <>
@@ -655,6 +689,53 @@ const LiveConversationUI: React.FC<{
             </div>
         </div>
     );
+};
+
+const ApiKeyInput: React.FC<{ onSubmit: (key: string) => void; error: string | null }> = ({ onSubmit, error }) => {
+  const [key, setKey] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (key.trim()) {
+      onSubmit(key.trim());
+    }
+  };
+
+  return (
+    <div className="min-h-screen font-sans flex flex-col items-center justify-center p-4 bg-slate-900 text-slate-200">
+      <div className="w-full max-w-md mx-auto bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-8 text-center">
+        <LogoIcon className="h-16 w-16 mx-auto mb-6 text-cyan-400" />
+        <h1 className="text-3xl font-bold mb-2">مرحبًا بك في بحث النبض</h1>
+        <p className="text-slate-400 mb-6">
+          لاستخدام التطبيق، يرجى إدخال مفتاح Google AI API الخاص بك. سيتم حفظه محليًا في متصفحك.
+        </p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="أدخل مفتاح API هنا"
+            className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            required
+          />
+          <button
+            type="submit"
+            className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          >
+            حفظ و متابعة
+          </button>
+        </form>
+        {error && (
+          <div className="mt-4 bg-red-900/50 border border-red-700 text-red-300 p-3 rounded-lg">
+            <strong>خطأ:</strong> {error}
+          </div>
+        )}
+        <p className="text-xs text-slate-500 mt-6">
+          يمكنك الحصول على مفتاح API من Google AI Studio.
+        </p>
+      </div>
+    </div>
+  );
 };
 
 

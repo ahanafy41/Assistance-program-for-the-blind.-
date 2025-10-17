@@ -1,11 +1,23 @@
 import { GoogleGenAI, GenerateContentResponse, Type, Modality, GenerateImagesResponse } from "@google/genai";
 import type { Insights, SearchFilters, GeneratedImage, SummaryLength, ResultTone, ResultFormat, PodcastDuration, PodcastScriptLine, Source, FactCheckResult, SourceType, ChatMessage } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+let ai: GoogleGenAI;
+
+export function initializeAi(apiKey: string) {
+  if (!apiKey) {
+    throw new Error("API key is required to initialize the service.");
+  }
+  ai = new GoogleGenAI({ apiKey });
+  console.log("Gemini Service Initialized.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper function to ensure AI is initialized before use
+export const getAiInstance = (): GoogleGenAI => {
+  if (!ai) {
+    throw new Error("AI Service not initialized. Please call initializeAi(apiKey) first.");
+  }
+  return ai;
+}
 
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 1000;
@@ -110,7 +122,7 @@ export async function searchWithGemini(query: string, filters: SearchFilters): P
   const systemInstruction = buildSearchSystemInstruction();
   const userQuery = buildUserQuery(query, filters);
   
-  const apiCall = () => ai.models.generateContentStream({
+  const apiCall = () => getAiInstance().models.generateContentStream({
     model: "gemini-2.5-flash",
     contents: userQuery,
     config: {
@@ -133,7 +145,7 @@ export async function searchWithGemini(query: string, filters: SearchFilters): P
 export async function analyzeTextWithGemini(text: string): Promise<Insights> {
   const prompt = `Analyze the following Arabic text to extract comprehensive insights. Text to analyze: --- ${text} --- Provide the analysis in a structured JSON format.`;
 
-  const apiCall = () => ai.models.generateContent({
+  const apiCall = () => getAiInstance().models.generateContent({
     model: "gemini-2.5-flash",
     contents: prompt,
     config: {
@@ -176,7 +188,7 @@ export async function analyzeTextWithGemini(text: string): Promise<Insights> {
 export async function getRelatedQuestions(query: string): Promise<string[]> {
   const prompt = `Based on the search query "${query}", generate 3 related questions in Arabic that a user might ask next. Provide only the questions in a JSON array of strings.`;
   const apiCall = async () => {
-    const response = await ai.models.generateContent({
+    const response = await getAiInstance().models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
@@ -208,7 +220,7 @@ export async function getRelatedQuestions(query: string): Promise<string[]> {
 }
 
 export async function generateImages(query: string): Promise<GeneratedImage[]> {
-  const apiCall = () => ai.models.generateImages({
+  const apiCall = () => getAiInstance().models.generateImages({
     model: 'imagen-4.0-generate-001',
     prompt: `Photorealistic image of: ${query}. Focus on high detail and cinematic lighting.`,
     config: {
@@ -248,7 +260,7 @@ export async function describeImage(base64Image: string): Promise<string> {
     };
 
     const apiCall = async () => {
-        const response = await ai.models.generateContent({
+        const response = await getAiInstance().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [imagePart, textPart] },
         });
@@ -278,7 +290,7 @@ export async function factCheckText(text: string): Promise<FactCheckResult> {
     Respond ONLY with a JSON object in the specified format.
     `;
 
-    const apiCall = () => ai.models.generateContent({
+    const apiCall = () => getAiInstance().models.generateContent({
         model: "gemini-2.5-pro", // Use a more powerful model for reasoning
         contents: prompt,
         config: {
@@ -337,7 +349,7 @@ export async function extractTextFromPdf(
         },
     };
 
-    const apiCall = () => ai.models.generateContent({
+    const apiCall = () => getAiInstance().models.generateContent({
         model: "gemini-2.5-pro",
         contents: [ { parts: [ filePart, { text: prompt } ] } ],
         config: {
@@ -400,7 +412,7 @@ ${fileContent}
 
     const contents = [...formattedHistory, { role: 'user', parts: [{ text: newMessage }] }];
 
-    const apiCall = () => ai.models.generateContentStream({
+    const apiCall = () => getAiInstance().models.generateContentStream({
         model: "gemini-2.5-flash",
         contents,
         config: {
@@ -422,7 +434,7 @@ ${fileContent}
 
 export async function generateSpeech(text: string, voice: string): Promise<string> {
   const apiCall = async () => {
-    const response = await ai.models.generateContent({
+    const response = await getAiInstance().models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: `Say with a clear and professional tone: ${text}` }] }],
       config: {
@@ -492,7 +504,7 @@ export async function generatePodcastScript(
     Respond ONLY with a JSON object.
     `;
 
-    const apiCall = () => ai.models.generateContent({
+    const apiCall = () => getAiInstance().models.generateContent({
         model: "gemini-2.5-pro",
         contents: prompt,
         config: {
@@ -538,7 +550,7 @@ export async function generateMultiSpeakerSpeech(script: PodcastScriptLine[], ma
     script.map(line => `${line.speaker}: ${line.line}`).join('\n');
 
   const apiCall = async () => {
-    const response = await ai.models.generateContent({
+    const response = await getAiInstance().models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
