@@ -599,17 +599,9 @@ export async function generateMultiSpeakerSpeech(script: PodcastScriptLine[], ma
 
 // Define the tools the agent can use
 const videoAgentTools = [
+  { "googleSearch": {} },
   {
     "functionDeclarations": [
-      {
-        "name": "search_internet",
-        "description": "Searches the internet for up-to-date information on a given topic.",
-        "parameters": {
-          "type": "OBJECT",
-          "properties": { "query": { "type": "STRING", "description": "The search query." } },
-          "required": ["query"]
-        }
-      },
       {
         "name": "generate_script",
         "description": "Generates a video script based on a given topic or provided information.",
