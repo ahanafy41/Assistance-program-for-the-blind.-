@@ -6,16 +6,18 @@ import { InsightsPanel } from './components/InsightsPanel';
 import { SearchHistory } from './components/SearchHistory';
 import { SearchCategories } from './components/SearchCategories';
 import { ThemeToggle } from './components/ThemeToggle';
-import { LogoIcon, MicrophoneIcon as MicOnIcon, SparklesIcon } from './components/icons';
-import { initializeAi, getAiInstance, searchWithGemini, analyzeTextWithGemini, getRelatedQuestions, generateImages, factCheckText } from './services/geminiService';
+import { LogoIcon, MicrophoneIcon as MicOnIcon, SparklesIcon, KeyIcon } from './components/icons';
+import { searchWithGemini, analyzeTextWithGemini, getRelatedQuestions, generateImages, factCheckText } from './services/geminiService';
 import type { Source, Insights, SearchFilters, GeneratedImage, SummaryLength, FactCheckResult } from './types';
 import { AdvancedFilters } from './components/AdvancedFilters';
 import { ImageResultDisplay } from './components/ImageResultDisplay';
 import { RelatedQuestions } from './components/RelatedQuestions';
 import { SearchModeToggle } from './components/SearchModeToggle';
-import { LiveServerMessage, Modality, Blob } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { FileReaderUI } from './components/FileReaderUI';
 import { PodcastCreatorUI } from './components/PodcastCreatorUI';
+import { VideoCreatorUI } from './components/VideoCreatorUI';
+import { ApiKeyModal } from './components/ApiKeyModal';
 
 const MAX_HISTORY_LENGTH = 10;
 const WELCOME_QUERIES = [
@@ -84,13 +86,13 @@ type TranscriptionTurn = {
     isFinal: boolean;
 };
 
-type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast';
+type SearchMode = 'web' | 'image' | 'video' | 'reader' | 'podcast' | 'live';
 
 const App: React.FC = () => {
   // API Key State
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [isApiReady, setIsApiReady] = useState(false);
-
+  const [apiKey, setApiKey] = useState<string | null>(() => localStorage.getItem('gemini_api_key'));
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  
   // Core state
   const [currentQuery, setCurrentQuery] = useState('');
   const [searchResult, setSearchResult] = useState('');
@@ -138,6 +140,12 @@ const App: React.FC = () => {
   const [transcriptionHistory, setTranscriptionHistory] = useState<TranscriptionTurn[]>([]);
   const currentInputTranscriptionRef = useRef('');
   const currentOutputTranscriptionRef = useRef('');
+  
+  useEffect(() => {
+    if (!apiKey) {
+        setIsApiKeyModalOpen(true);
+    }
+  }, [apiKey]);
   
   useEffect(() => {
       let queryIndex = 0, charIndex = 0;
@@ -188,32 +196,12 @@ const App: React.FC = () => {
     } catch (e) { console.error("Failed to load history", e); }
   }, []);
 
-  // API Key initialization effect
-  useEffect(() => {
-    const storedApiKey = localStorage.getItem('geminiApiKey');
-    if (storedApiKey) {
-      try {
-        initializeAi(storedApiKey);
-        setApiKey(storedApiKey);
-        setIsApiReady(true);
-      } catch (error) {
-        console.error("Failed to initialize with stored API key:", error);
-        localStorage.removeItem('geminiApiKey'); // Clear bad key
-      }
-    }
-  }, []);
-
-  const handleApiKeySubmit = (key: string) => {
-    try {
-      initializeAi(key);
-      localStorage.setItem('geminiApiKey', key);
-      setApiKey(key);
-      setIsApiReady(true);
-      setError(null);
-    } catch (error) {
-      console.error("API Key initialization failed:", error);
-      setError("فشل تهيئة مفتاح API. يرجى التحقق من المفتاح والمحاولة مرة أخرى.");
-    }
+  const handleSaveApiKey = (key: string) => {
+    localStorage.setItem('gemini_api_key', key);
+    setApiKey(key);
+    setIsApiKeyModalOpen(false);
+    resetState();
+    setSearchPerformed(false);
   };
 
   const updateHistory = (newQuery: string) => {
@@ -267,9 +255,6 @@ const App: React.FC = () => {
       if (chunk.candidates?.[0]?.groundingMetadata?.groundingChunks) {
           const newSourcesFromChunk = chunk.candidates[0].groundingMetadata.groundingChunks
               .map((c: any) => {
-                  // The grounding chunk from the API may contain a snippet/quote.
-                  // We extract it here to show it to the user for verification.
-                  // The exact field name might be `snippet` or inside `retrievedContext`.
                   const snippet = c.retrievedContext?.text || c.snippet;
                   return { ...c.web, snippet };
               })
@@ -321,7 +306,6 @@ const App: React.FC = () => {
       setFactCheckData(result);
     } catch (err) {
       console.error("Failed to fact check text:", err);
-      // Optionally set an error state for fact-checking
     } finally {
       setIsFactChecking(false);
     }
@@ -364,6 +348,12 @@ const App: React.FC = () => {
     setError(null);
     
     try {
+      const currentApiKey = localStorage.getItem('gemini_api_key');
+      if (!currentApiKey) {
+          throw new Error("مفتاح API غير موجود. الرجاء إعداده أولاً.");
+      }
+      const ai = new GoogleGenAI({ apiKey: currentApiKey });
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       liveStreamRef.current = stream;
 
@@ -376,7 +366,7 @@ const App: React.FC = () => {
       const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
       scriptProcessorRef.current = scriptProcessor;
 
-      sessionPromiseRef.current = getAiInstance().live.connect({
+      sessionPromiseRef.current = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
           onopen: () => {
@@ -464,8 +454,9 @@ const App: React.FC = () => {
       });
 
     } catch (err) {
+      const message = err instanceof Error ? err.message : "فشل في بدء المحادثة.";
       console.error("Failed to start live session:", err);
-      setError("فشل في الوصول إلى الميكروفون. يرجى التحقق من الأذونات والمحاولة مرة أخرى.");
+      setError(`فشل في الوصول إلى الميكروفون. يرجى التحقق من الأذونات والمحاولة مرة أخرى. (${message})`);
       setIsLiveConnecting(false);
     }
   };
@@ -498,14 +489,122 @@ const App: React.FC = () => {
       };
   }, [isLiveConnected, handleStopLiveSession]);
 
+  const renderContent = () => {
+    switch (searchMode) {
+        case 'live':
+            return <LiveConversationUI
+                isConnected={isLiveConnected}
+                isConnecting={isLiveConnecting}
+                transcriptionHistory={transcriptionHistory}
+                onStart={handleStartLiveSession}
+                onStop={handleStopLiveSession}
+                error={error}
+            />;
+        case 'reader':
+            return <FileReaderUI />;
+        case 'podcast':
+            return <PodcastCreatorUI />;
+        case 'video':
+            return <VideoCreatorUI />;
+        default:
+            return (
+                <>
+                  <SearchBar 
+                      onSearch={handleSearch} 
+                      isLoading={isLoading} 
+                      initialPlaceholder={animatedPlaceholder} 
+                      onVoiceSearchClick={handleVoiceSearch}
+                      isListening={isListening}
+                      onToggleFilters={() => setShowFilters(!showFilters)}
+                  />
 
-  if (!isApiReady) {
-    return <ApiKeyInput onSubmit={handleApiKeySubmit} error={error} />;
-  }
+                  {showFilters && <AdvancedFilters filters={filters} setFilters={setFilters} onClose={() => setShowFilters(false)} />}
+                  
+                  {!searchPerformed && (
+                    <>
+                      <SearchCategories onCategorySelect={handleSearch} />
+                      <SearchHistory 
+                          history={history}
+                          onItemClick={handleSearch}
+                          onClear={() => { setHistory([]); localStorage.removeItem('searchHistory'); }}
+                      />
+                    </>
+                  )}
+
+                  {error && (
+                    <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg my-6">
+                      <div className="flex justify-between items-center">
+                        <strong>خطأ:</strong> {error}
+                        <button onClick={() => setShowErrorDetails(!showErrorDetails)} className="text-xs bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">
+                          {showErrorDetails ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
+                        </button>
+                      </div>
+                      {showErrorDetails && <pre className="mt-2 p-2 bg-slate-900 rounded text-xs overflow-auto">{errorDetails}</pre>}
+                    </div>
+                  )}
+                  
+                  {!searchPerformed && history.length === 0 && (searchMode === 'web' || searchMode === 'image') && (
+                      <div className="flex-grow flex flex-col items-center justify-center text-center pt-16">
+                          <LogoIcon className="h-20 w-20 mb-5 text-slate-500 dark:text-slate-600"/>
+                          <h2 className="text-2xl font-semibold text-slate-700 dark:text-slate-300">ابدأ رحلة البحث والإبداع</h2>
+                          <p className="max-w-md mt-2 text-slate-500 dark:text-slate-400">
+                              اطرح سؤالاً للحصول على إجابات حية، أو صف فكرة لتحويلها إلى صورة فنية مذهلة.
+                          </p>
+                      </div>
+                  )}
+                  
+                  {searchPerformed && (
+                    <div className="mt-6 flex-grow space-y-8">
+                      {searchMode === 'web' ? (
+                        <>
+                          <SourceTicker sources={sources} isLoading={isLoading} />
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <div className="md:col-span-2">
+                              <ResultDisplay 
+                                result={searchResult} 
+                                isLoading={isLoading} 
+                                sources={sources}
+                                onShare={()=>{}} 
+                                onExportMarkdown={()=>{}} 
+                                selectedVoice={selectedVoice}
+                                setSelectedVoice={setSelectedVoice}
+                              />
+                            </div>
+                            <div>
+                              <InsightsPanel 
+                                insights={insights} 
+                                isAnalyzing={isAnalyzing} 
+                                onKeywordClick={handleSearch}
+                                factCheckData={factCheckData}
+                                isFactChecking={isFactChecking}
+                                onFactCheck={handleFactCheck}
+                                isSearchComplete={!isLoading && searchPerformed && !!searchResult}
+                              />
+                            </div>
+                          </div>
+                          <RelatedQuestions questions={relatedQuestions} onQuestionClick={handleSearch} />
+                        </>
+                      ) : (
+                        <ImageResultDisplay images={generatedImages} isLoading={isLoading} query={currentQuery} />
+                      )}
+                    </div>
+                  )}
+                </>
+            );
+    }
+  };
 
   return (
     <>
-      <div className="min-h-screen font-sans flex flex-col items-center p-4 sm:p-6 lg:p-8 transition-colors duration-300 non-printable">
+      {isApiKeyModalOpen && (
+        <ApiKeyModal 
+            onSave={handleSaveApiKey} 
+            initialKey={apiKey || ''}
+            isDismissible={!!apiKey}
+            onClose={() => setIsApiKeyModalOpen(false)}
+        />
+      )}
+      <div className={`min-h-screen font-sans flex flex-col items-center p-4 sm:p-6 lg:p-8 transition-all duration-300 non-printable ${isApiKeyModalOpen && !apiKey ? 'blur-sm pointer-events-none' : ''}`}>
         <main className="w-full max-w-4xl mx-auto flex flex-col flex-grow">
           <header className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-3">
@@ -514,108 +613,21 @@ const App: React.FC = () => {
                 بحث النبض المباشر
               </h1>
             </div>
-            <ThemeToggle theme={theme} setTheme={setTheme} />
+            <div className="flex items-center gap-2">
+                <ThemeToggle theme={theme} setTheme={setTheme} />
+                <button
+                    onClick={() => setIsApiKeyModalOpen(true)}
+                    className="p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+                    title="تغيير مفتاح API"
+                >
+                    <KeyIcon className="h-6 w-6" />
+                </button>
+            </div>
           </header>
           
           <SearchModeToggle mode={searchMode} setMode={setSearchMode} />
 
-          {searchMode === 'live' ? (
-            <LiveConversationUI
-                isConnected={isLiveConnected}
-                isConnecting={isLiveConnecting}
-                transcriptionHistory={transcriptionHistory}
-                onStart={handleStartLiveSession}
-                onStop={handleStopLiveSession}
-                error={error}
-            />
-          ) : searchMode === 'reader' ? (
-            <FileReaderUI />
-          ) : searchMode === 'podcast' ? (
-            <PodcastCreatorUI />
-          ) : (
-            <>
-              <SearchBar 
-                  onSearch={handleSearch} 
-                  isLoading={isLoading} 
-                  initialPlaceholder={animatedPlaceholder} 
-                  onVoiceSearchClick={handleVoiceSearch}
-                  isListening={isListening}
-                  onToggleFilters={() => setShowFilters(!showFilters)}
-              />
-
-              {showFilters && <AdvancedFilters filters={filters} setFilters={setFilters} onClose={() => setShowFilters(false)} />}
-              
-              {!searchPerformed && (
-                <>
-                  <SearchCategories onCategorySelect={handleSearch} />
-                  <SearchHistory 
-                      history={history}
-                      onItemClick={handleSearch}
-                      onClear={() => { setHistory([]); localStorage.removeItem('searchHistory'); }}
-                  />
-                </>
-              )}
-
-              {error && (
-                <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg my-6">
-                  <div className="flex justify-between items-center">
-                    <strong>خطأ:</strong> {error}
-                    <button onClick={() => setShowErrorDetails(!showErrorDetails)} className="text-xs bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">
-                      {showErrorDetails ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
-                    </button>
-                  </div>
-                  {showErrorDetails && <pre className="mt-2 p-2 bg-slate-900 rounded text-xs overflow-auto">{errorDetails}</pre>}
-                </div>
-              )}
-              
-              {!searchPerformed && history.length === 0 && searchMode !== 'live' && (
-                  <div className="flex-grow flex flex-col items-center justify-center text-center pt-16">
-                      <LogoIcon className="h-20 w-20 mb-5 text-slate-500 dark:text-slate-600"/>
-                      <h2 className="text-2xl font-semibold text-slate-700 dark:text-slate-300">ابدأ رحلة البحث والإبداع</h2>
-                      <p className="max-w-md mt-2 text-slate-500 dark:text-slate-400">
-                          اطرح سؤالاً للحصول على إجابات حية، أو صف فكرة لتحويلها إلى صورة فنية مذهلة.
-                      </p>
-                  </div>
-              )}
-              
-              {searchPerformed && (
-                <div className="mt-6 flex-grow space-y-8">
-                  {searchMode === 'web' ? (
-                    <>
-                      <SourceTicker sources={sources} isLoading={isLoading} />
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <div className="md:col-span-2">
-                          <ResultDisplay 
-                            result={searchResult} 
-                            isLoading={isLoading} 
-                            sources={sources}
-                            onShare={()=>{}} 
-                            onExportMarkdown={()=>{}} 
-                            selectedVoice={selectedVoice}
-                            setSelectedVoice={setSelectedVoice}
-                          />
-                        </div>
-                        <div>
-                          <InsightsPanel 
-                            insights={insights} 
-                            isAnalyzing={isAnalyzing} 
-                            onKeywordClick={handleSearch}
-                            factCheckData={factCheckData}
-                            isFactChecking={isFactChecking}
-                            onFactCheck={handleFactCheck}
-                            isSearchComplete={!isLoading && searchPerformed && !!searchResult}
-                          />
-                        </div>
-                      </div>
-                      <RelatedQuestions questions={relatedQuestions} onQuestionClick={handleSearch} />
-                    </>
-                  ) : (
-                    <ImageResultDisplay images={generatedImages} isLoading={isLoading} query={currentQuery} />
-                  )}
-                </div>
-              )}
-            </>
-          )}
+          {renderContent()}
 
         </main>
         <footer className="text-center text-slate-500 text-sm mt-8 py-4">
@@ -689,53 +701,6 @@ const LiveConversationUI: React.FC<{
             </div>
         </div>
     );
-};
-
-const ApiKeyInput: React.FC<{ onSubmit: (key: string) => void; error: string | null }> = ({ onSubmit, error }) => {
-  const [key, setKey] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (key.trim()) {
-      onSubmit(key.trim());
-    }
-  };
-
-  return (
-    <div className="min-h-screen font-sans flex flex-col items-center justify-center p-4 bg-slate-900 text-slate-200">
-      <div className="w-full max-w-md mx-auto bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-8 text-center">
-        <LogoIcon className="h-16 w-16 mx-auto mb-6 text-cyan-400" />
-        <h1 className="text-3xl font-bold mb-2">مرحبًا بك في بحث النبض</h1>
-        <p className="text-slate-400 mb-6">
-          لاستخدام التطبيق، يرجى إدخال مفتاح Google AI API الخاص بك. سيتم حفظه محليًا في متصفحك.
-        </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="password"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder="أدخل مفتاح API هنا"
-            className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            required
-          />
-          <button
-            type="submit"
-            className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-          >
-            حفظ و متابعة
-          </button>
-        </form>
-        {error && (
-          <div className="mt-4 bg-red-900/50 border border-red-700 text-red-300 p-3 rounded-lg">
-            <strong>خطأ:</strong> {error}
-          </div>
-        )}
-        <p className="text-xs text-slate-500 mt-6">
-          يمكنك الحصول على مفتاح API من Google AI Studio.
-        </p>
-      </div>
-    </div>
-  );
 };
 
 

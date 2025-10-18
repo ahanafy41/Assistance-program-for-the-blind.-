@@ -1,6 +1,6 @@
 import React from 'react';
 
-type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast';
+type SearchMode = 'web' | 'image' | 'video' | 'reader' | 'podcast' | 'live';
 
 interface SearchModeToggleProps {
   mode: SearchMode;
@@ -29,6 +29,14 @@ export const SearchModeToggle: React.FC<SearchModeToggleProps> = ({ mode, setMod
         title="التحويل إلى وضع توليد الصور"
       >
         توليد صور
+      </button>
+      <button
+        onClick={() => setMode('video')}
+        className={`${baseClasses} ${mode === 'video' ? activeClasses : inactiveClasses}`}
+        aria-pressed={mode === 'video'}
+        title="التحويل إلى وضع صانع الفيديو"
+      >
+        صانع الفيديو
       </button>
        <button
         onClick={() => setMode('reader')}

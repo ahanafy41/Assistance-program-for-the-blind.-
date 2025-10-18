@@ -1,22 +1,12 @@
 import { GoogleGenAI, GenerateContentResponse, Type, Modality, GenerateImagesResponse } from "@google/genai";
 import type { Insights, SearchFilters, GeneratedImage, SummaryLength, ResultTone, ResultFormat, PodcastDuration, PodcastScriptLine, Source, FactCheckResult, SourceType, ChatMessage } from '../types';
 
-let ai: GoogleGenAI;
-
-export function initializeAi(apiKey: string) {
-  if (!apiKey) {
-    throw new Error("API key is required to initialize the service.");
-  }
-  ai = new GoogleGenAI({ apiKey });
-  console.log("Gemini Service Initialized.");
-}
-
-// Helper function to ensure AI is initialized before use
-export const getAiInstance = (): GoogleGenAI => {
-  if (!ai) {
-    throw new Error("AI Service not initialized. Please call initializeAi(apiKey) first.");
-  }
-  return ai;
+function getAiClient(): GoogleGenAI {
+    const apiKey = localStorage.getItem('gemini_api_key');
+    if (!apiKey) {
+        throw new Error("الرجاء إدخال مفتاح Gemini API الخاص بك أولاً.");
+    }
+    return new GoogleGenAI({ apiKey });
 }
 
 const MAX_RETRIES = 3;
@@ -119,10 +109,11 @@ const buildUserQuery = (query: string, filters: SearchFilters): string => {
 };
 
 export async function searchWithGemini(query: string, filters: SearchFilters): Promise<AsyncGenerator<GenerateContentResponse>> {
+  const ai = getAiClient();
   const systemInstruction = buildSearchSystemInstruction();
   const userQuery = buildUserQuery(query, filters);
   
-  const apiCall = () => getAiInstance().models.generateContentStream({
+  const apiCall = () => ai.models.generateContentStream({
     model: "gemini-2.5-flash",
     contents: userQuery,
     config: {
@@ -138,14 +129,15 @@ export async function searchWithGemini(query: string, filters: SearchFilters): P
     if (error instanceof Error && (error.message.includes('429') || error.message.toUpperCase().includes('RESOURCE_EXHAUSTED'))) {
        throw new Error("لقد تجاوزت حد الطلبات. يرجى المحاولة مرة أخرى لاحقًا.");
     }
-    throw new Error("فشل في جلب نتائج البحث من Gemini API.");
+    throw error;
   }
 }
 
 export async function analyzeTextWithGemini(text: string): Promise<Insights> {
+  const ai = getAiClient();
   const prompt = `Analyze the following Arabic text to extract comprehensive insights. Text to analyze: --- ${text} --- Provide the analysis in a structured JSON format.`;
 
-  const apiCall = () => getAiInstance().models.generateContent({
+  const apiCall = () => ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: prompt,
     config: {
@@ -176,19 +168,19 @@ export async function analyzeTextWithGemini(text: string): Promise<Insights> {
   });
 
    try {
-    // FIX: Explicitly type the response from withRetry to avoid 'unknown' type.
     const response = await withRetry<GenerateContentResponse>(apiCall);
     return JSON.parse(response.text);
   } catch (error) {
     console.error("Error analyzing text:", error);
-    throw new Error("فشل في تحليل النص باستخدام Gemini API.");
+    throw error;
   }
 }
 
 export async function getRelatedQuestions(query: string): Promise<string[]> {
+  const ai = getAiClient();
   const prompt = `Based on the search query "${query}", generate 3 related questions in Arabic that a user might ask next. Provide only the questions in a JSON array of strings.`;
   const apiCall = async () => {
-    const response = await getAiInstance().models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
@@ -219,19 +211,19 @@ export async function getRelatedQuestions(query: string): Promise<string[]> {
   }
 }
 
-export async function generateImages(query: string): Promise<GeneratedImage[]> {
-  const apiCall = () => getAiInstance().models.generateImages({
+export async function generateImages(query: string, numberOfImages: number = 4): Promise<GeneratedImage[]> {
+  const ai = getAiClient();
+  const apiCall = () => ai.models.generateImages({
     model: 'imagen-4.0-generate-001',
     prompt: `Photorealistic image of: ${query}. Focus on high detail and cinematic lighting.`,
     config: {
-      numberOfImages: 4, // Generate 4 images for variety
+      numberOfImages: numberOfImages,
       outputMimeType: 'image/jpeg',
       aspectRatio: '16:9',
     },
   });
 
   try {
-    // FIX: Explicitly type the response from withRetry to avoid 'unknown' type.
     const response = await withRetry<GenerateImagesResponse>(apiCall);
     return response.generatedImages.map(img => ({
       imageBytes: img.image.imageBytes,
@@ -242,12 +234,13 @@ export async function generateImages(query: string): Promise<GeneratedImage[]> {
     if (error instanceof Error && (error.message.includes('429') || error.message.toUpperCase().includes('RESOURCE_EXHAUSTED'))) {
        throw new Error("لقد تجاوزت حد الطلبات. يرجى المحاولة مرة أخرى لاحقًا.");
     }
-    throw new Error("فشل في توليد الصور من Imagen API.");
+    throw error;
   }
 }
 
 export async function describeImage(base64Image: string): Promise<string> {
-    const prompt = "أنت خبير في وصف الصور للمكفوفين. صف الصورة التالية باللغة العربية وصفاً تفصيلياً ودقيقاً. اذكر العناصر الرئيسية، الألوان، الأجواء العامة، وأي تفاصيل هامة تساعد على تخيل المشهد بوضوح.";
+    const ai = getAiClient();
+    const prompt = "أنت خبير في وصف الصور للمكفوفين. صف الصورة التالية باللغة العربية وصفاً تفصيلياً ودقيقاً ومختصراً في جملة واحدة. اذكر العناصر الرئيسية، الألوان، والأجواء العامة التي تساعد على تخيل المشهد بوضوح.";
     
     const imagePart = {
         inlineData: {
@@ -260,7 +253,7 @@ export async function describeImage(base64Image: string): Promise<string> {
     };
 
     const apiCall = async () => {
-        const response = await getAiInstance().models.generateContent({
+        const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [imagePart, textPart] },
         });
@@ -271,11 +264,12 @@ export async function describeImage(base64Image: string): Promise<string> {
         return await withRetry(apiCall);
     } catch (error) {
         console.error("Error describing image:", error);
-        throw new Error("فشل في تحليل الصورة باستخدام Gemini API.");
+        throw error;
     }
 }
 
 export async function factCheckText(text: string): Promise<FactCheckResult> {
+    const ai = getAiClient();
     const prompt = `
     You are a fact-checking expert. Analyze the following Arabic text and identify the main factual claims.
     For each claim, determine if it is well-supported, only supported by a single source (making it less reliable), or if there are conflicting reports.
@@ -290,7 +284,7 @@ export async function factCheckText(text: string): Promise<FactCheckResult> {
     Respond ONLY with a JSON object in the specified format.
     `;
 
-    const apiCall = () => getAiInstance().models.generateContent({
+    const apiCall = () => ai.models.generateContent({
         model: "gemini-2.5-pro", // Use a more powerful model for reasoning
         contents: prompt,
         config: {
@@ -319,12 +313,11 @@ export async function factCheckText(text: string): Promise<FactCheckResult> {
     });
 
     try {
-        // FIX: Explicitly type the response from withRetry to avoid 'unknown' type.
         const response = await withRetry<GenerateContentResponse>(apiCall);
         return JSON.parse(response.text);
     } catch (error) {
         console.error("Error in factCheckText:", error);
-        throw new Error("فشل في تدقيق الحقائق باستخدام Gemini API.");
+        throw error;
     }
 }
 
@@ -332,6 +325,7 @@ export async function extractTextFromPdf(
     base64Pdf: string,
     mimeType: string
 ): Promise<{ pageNumber: number; content: string }[]> {
+    const ai = getAiClient();
     const prompt = `
     Analyze the provided PDF document page by page.
     Extract all text content from each page.
@@ -349,7 +343,7 @@ export async function extractTextFromPdf(
         },
     };
 
-    const apiCall = () => getAiInstance().models.generateContent({
+    const apiCall = () => ai.models.generateContent({
         model: "gemini-2.5-pro",
         contents: [ { parts: [ filePart, { text: prompt } ] } ],
         config: {
@@ -387,7 +381,7 @@ export async function extractTextFromPdf(
         return result.pages || [];
     } catch (error) {
         console.error("Error in extractTextFromPdf:", error);
-        throw new Error("فشل في استخراج النص من ملف PDF باستخدام Gemini API.");
+        throw error;
     }
 }
 
@@ -396,6 +390,7 @@ export async function chatOnFileContentStream(
     history: ChatMessage[],
     newMessage: string
 ): Promise<AsyncGenerator<GenerateContentResponse>> {
+    const ai = getAiClient();
     const systemInstruction = `You are a helpful AI assistant that answers questions based ONLY on the provided document content.
 Your responses must be in Arabic.
 If the answer to a question cannot be found in the document, you must clearly state that the information is not available in the provided text.
@@ -412,7 +407,7 @@ ${fileContent}
 
     const contents = [...formattedHistory, { role: 'user', parts: [{ text: newMessage }] }];
 
-    const apiCall = () => getAiInstance().models.generateContentStream({
+    const apiCall = () => ai.models.generateContentStream({
         model: "gemini-2.5-flash",
         contents,
         config: {
@@ -427,14 +422,15 @@ ${fileContent}
         if (error instanceof Error && (error.message.includes('429') || error.message.toUpperCase().includes('RESOURCE_EXHAUSTED'))) {
            throw new Error("لقد تجاوزت حد الطلبات. يرجى المحاولة مرة أخرى لاحقًا.");
         }
-        throw new Error("فشل في بدء المحادثة مع الملف.");
+        throw error;
     }
 }
 
 
 export async function generateSpeech(text: string, voice: string): Promise<string> {
+  const ai = getAiClient();
   const apiCall = async () => {
-    const response = await getAiInstance().models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: `Say with a clear and professional tone: ${text}` }] }],
       config: {
@@ -459,7 +455,7 @@ export async function generateSpeech(text: string, voice: string): Promise<strin
     return await withRetry(apiCall);
   } catch (error) {
     console.error("Error generating speech:", error);
-    throw new Error("فشل في توليد الصوت من Gemini API.");
+    throw error;
   }
 }
 
@@ -481,6 +477,7 @@ export async function generatePodcastScript(
     tone: ResultTone,
     dialect: string
 ): Promise<PodcastScriptLine[]> {
+    const ai = getAiClient();
     const wordCount = getWordCountForDuration(duration);
     const toneDescription = tone === 'casual' ? 'friendly and conversational' :
                             tone === 'professional' ? 'formal and informative' :
@@ -504,7 +501,7 @@ export async function generatePodcastScript(
     Respond ONLY with a JSON object.
     `;
 
-    const apiCall = () => getAiInstance().models.generateContent({
+    const apiCall = () => ai.models.generateContent({
         model: "gemini-2.5-pro",
         contents: prompt,
         config: {
@@ -530,17 +527,17 @@ export async function generatePodcastScript(
     });
 
     try {
-        // FIX: Explicitly type the response from withRetry to avoid 'unknown' type.
         const response = await withRetry<GenerateContentResponse>(apiCall);
         const result = JSON.parse(response.text);
         return result.script;
     } catch (error) {
         console.error("Error in generatePodcastScript:", error);
-        throw new Error("فشل في كتابة نص البودكاست باستخدام Gemini API.");
+        throw error;
     }
 }
 
 export async function generateMultiSpeakerSpeech(script: PodcastScriptLine[], maleVoice: string, femaleVoice: string): Promise<string> {
+  const ai = getAiClient();
   if (script.length === 0) {
     throw new Error("Cannot generate podcast from an empty script.");
   }
@@ -550,7 +547,7 @@ export async function generateMultiSpeakerSpeech(script: PodcastScriptLine[], ma
     script.map(line => `${line.speaker}: ${line.line}`).join('\n');
 
   const apiCall = async () => {
-    const response = await getAiInstance().models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
@@ -591,6 +588,35 @@ export async function generateMultiSpeakerSpeech(script: PodcastScriptLine[], ma
     if (error instanceof Error && (error.message.includes('429') || error.message.toUpperCase().includes('RESOURCE_EXHAUSTED'))) {
        throw new Error("لقد تجاوزت حد الطلبات. يرجى المحاولة مرة أخرى لاحقًا.");
     }
-    throw new Error("فشل في توليد صوت البودكاست من Gemini API.");
+    throw error;
   }
+}
+
+export async function summarizeTextForNewsScript(text: string, durationInSeconds: number): Promise<string> {
+    const ai = getAiClient();
+    const estimatedWords = durationInSeconds * 2.5; // ~150 words per minute
+    const prompt = `You are a news script writer for a short video report.
+    Summarize the following text into a concise and engaging news script.
+    The script should be approximately ${estimatedWords} words long.
+    The language must be Arabic.
+    The output must be only the script text, without any titles or introductions.
+
+    Text to summarize:
+    ---
+    ${text}
+    ---
+    `;
+    const apiCall = async () => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+        });
+        return response.text;
+    };
+    try {
+        return await withRetry(apiCall);
+    } catch (error) {
+        console.error("Error in summarizeTextForNewsScript:", error);
+        throw error;
+    }
 }
