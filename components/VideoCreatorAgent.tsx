@@ -86,7 +86,7 @@ export const VideoCreatorAgent: React.FC = () => {
             let toolResult: any;
             try {
                 switch (toolName) {
-                    case 'search_internet':
+                    case 'googleSearch':
                         const query = toolArgs.query as string;
                         const searchStream = await searchWithGemini(query, {
                             summaryLength: 'normal',
