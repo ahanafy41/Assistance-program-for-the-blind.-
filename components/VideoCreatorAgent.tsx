@@ -58,7 +58,7 @@ export const VideoCreatorAgent: React.FC = () => {
             const response = await runVideoAgentTurn(newHistory);
             await handleAgentResponse(response, newHistory);
         } catch (error) {
-            console.error(error);
+            console.error("Error during handleSendMessage:", error);
             const errorMessage: ChatMessage = { role: 'model', content: "عذراً، حدث خطأ ما. يرجى المحاولة مرة أخرى." };
             setHistory(prev => [...prev, errorMessage]);
         } finally {
