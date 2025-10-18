@@ -4,6 +4,7 @@ import {
     generatePodcastScript,
     generateImages as generateImagesService,
     generateSpeech,
+    searchWithGemini,
 } from '../services/geminiService';
 import { assembleVideo } from '../services/videoService';
 import type { ChatMessage, GeneratedImage, PodcastScriptLine } from '../types';
@@ -85,6 +86,22 @@ export const VideoCreatorAgent: React.FC = () => {
             let toolResult: any;
             try {
                 switch (toolName) {
+                    case 'search_internet':
+                        const query = toolArgs.query as string;
+                        const searchStream = await searchWithGemini(query, {
+                            summaryLength: 'normal',
+                            minSources: 3,
+                            // Add other filters as needed or expose them to the agent
+                        } as any);
+
+                        let searchResultText = '';
+                        for await (const chunk of searchStream) {
+                            searchResultText += chunk.text;
+                        }
+
+                        toolResult = { result: searchResultText };
+                        break;
+
                     case 'generate_script':
                         const generatedScript = await generatePodcastScript(toolArgs.topic as string, 'short', 'casual', 'Egyptian');
                         setScript(generatedScript);
