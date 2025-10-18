@@ -1,6 +1,6 @@
 import React from 'react';
-
-type SearchMode = 'web' | 'image' | 'video' | 'reader' | 'podcast' | 'live';
+// FIX: Import SearchMode type from central types file.
+import type { SearchMode } from '../types';
 
 interface SearchModeToggleProps {
   mode: SearchMode;

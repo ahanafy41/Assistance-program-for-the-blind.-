@@ -11,6 +11,9 @@ export interface Entity {
   type: 'Person' | 'Organization' | 'Location' | 'Other';
 }
 
+// FIX: Export SearchMode type to fix import errors in App.tsx and MainSearchMode.tsx.
+export type SearchMode = 'web' | 'image' | 'video' | 'reader' | 'podcast' | 'live';
+
 export type SummaryLength = 'brief' | 'normal' | 'detailed';
 
 export type ResultTone = 'professional' | 'casual' | 'academic' | 'simple' | '';

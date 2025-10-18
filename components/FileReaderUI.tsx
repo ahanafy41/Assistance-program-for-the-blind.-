@@ -3,6 +3,7 @@ import { UploadIcon, BookOpenIcon, PaperAirplaneIcon, PodcastIcon } from './icon
 import { chatOnFileContentStream, generatePodcastScript, generateMultiSpeakerSpeech, extractTextFromPdf } from '../services/geminiService';
 import type { ChatMessage, PodcastDuration, ResultTone, PodcastScriptLine } from '../types';
 import mammoth from 'mammoth';
+import { decode, createWavBlob } from '../utils/audio';
 
 // Constants copied from PodcastCreatorUI for consistency
 const MALE_PODCAST_VOICES = [
@@ -36,61 +37,6 @@ const PODCAST_DURATIONS: { id: PodcastDuration; label: string }[] = [
     { id: 'very-long', label: 'طويل جداً (~10 دق)' },
     { id: 'epic', label: 'ملحمي (~15 دق)' },
 ];
-
-// --- Audio Helper Functions ---
-function decode(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function createWavBlob(pcmDataChunks: Uint8Array[]): Blob {
-    const totalLength = pcmDataChunks.reduce((acc, chunk) => acc + chunk.length, 0);
-    const combinedPcm = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of pcmDataChunks) {
-        combinedPcm.set(chunk, offset);
-        offset += chunk.length;
-    }
-    
-    const dataInt16 = new Int16Array(combinedPcm.buffer);
-    const dataSize = dataInt16.length * 2;
-    const buffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(buffer);
-    const numChannels = 1;
-    const sampleRate = 24000;
-
-    const writeString = (view: DataView, offset: number, string: string) => {
-        for (let i = 0; i < string.length; i++) {
-            view.setUint8(offset + i, string.charCodeAt(i));
-        }
-    };
-
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * 2, true);
-    view.setUint16(32, numChannels * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    for (let i = 0; i < dataInt16.length; i++) {
-        view.setInt16(44 + i * 2, dataInt16[i], true);
-    }
-
-    return new Blob([view], { type: 'audio/wav' });
-}
-// --- End Audio Helper Functions ---
 
 type ViewState = 'upload' | 'pageSelection' | 'reader';
 type LoadedFileType = 'text' | 'pdf' | 'word' | null;
@@ -413,7 +359,7 @@ export const FileReaderUI: React.FC = () => {
             }
 
             setPodcastGenerationStatus(`الخطوة ${totalChunks + 1}/${totalChunks + 1}: جارٍ تجميع الصوت...`);
-            const wavBlob = createWavBlob(audioChunks);
+            const wavBlob = createWavBlob(audioChunks, 24000, 1);
             const url = URL.createObjectURL(wavBlob);
             setPodcastAudioUrl(url);
 

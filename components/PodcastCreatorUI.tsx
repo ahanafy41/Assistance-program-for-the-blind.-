@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PodcastIcon, SparklesIcon } from './icons';
 import { generatePodcastScript, generateMultiSpeakerSpeech } from '../services/geminiService';
 import type { PodcastDuration, ResultTone, PodcastScriptLine } from '../types';
+import { decode, createWavBlob } from '../utils/audio';
 
 // Copied from ResultDisplay.tsx for consistency
 const MALE_PODCAST_VOICES = [
@@ -35,51 +36,6 @@ const PODCAST_DURATIONS: { id: PodcastDuration; label: string }[] = [
     { id: 'very-long', label: 'طويل جداً (~10 دق)' },
     { id: 'epic', label: 'ملحمي (~15 دق)' },
 ];
-
-// Audio helper from ResultDisplay.tsx
-function decode(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function createWavBlob(pcmData: Uint8Array, sampleRate: number, numChannels: number): Blob {
-    const dataInt16 = new Int16Array(pcmData.buffer);
-    const dataSize = dataInt16.length * 2;
-    const buffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(buffer);
-
-    const writeString = (view: DataView, offset: number, string: string) => {
-        for (let i = 0; i < string.length; i++) {
-            view.setUint8(offset + i, string.charCodeAt(i));
-        }
-    };
-
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * 2, true);
-    view.setUint16(32, numChannels * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    for (let i = 0; i < dataInt16.length; i++) {
-        view.setInt16(44 + i * 2, dataInt16[i], true);
-    }
-
-    return new Blob([view], { type: 'audio/wav' });
-}
-
 
 export const PodcastCreatorUI: React.FC = () => {
     const [topic, setTopic] = useState('');
