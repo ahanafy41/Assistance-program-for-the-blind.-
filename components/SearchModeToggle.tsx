@@ -1,6 +1,6 @@
 import React from 'react';
 
-type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast';
+type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast' | 'video-agent';
 
 interface SearchModeToggleProps {
   mode: SearchMode;
@@ -53,6 +53,14 @@ export const SearchModeToggle: React.FC<SearchModeToggleProps> = ({ mode, setMod
         title="التحويل إلى وضع المحادثة المباشرة"
       >
         محادثة مباشرة
+      </button>
+      <button
+        onClick={() => setMode('video-agent')}
+        className={`${baseClasses} ${mode === 'video-agent' ? activeClasses : inactiveClasses}`}
+        aria-pressed={mode === 'video-agent'}
+        title="التحويل إلى وضع صانع الفيديو"
+      >
+        صانع الفيديو
       </button>
     </div>
   );

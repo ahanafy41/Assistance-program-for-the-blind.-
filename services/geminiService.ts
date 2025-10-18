@@ -594,3 +594,101 @@ export async function generateMultiSpeakerSpeech(script: PodcastScriptLine[], ma
     throw new Error("فشل في توليد صوت البودكاست من Gemini API.");
   }
 }
+
+// --- Video Creator Agent Logic ---
+
+// Define the tools the agent can use
+const videoAgentTools = [
+  { "googleSearch": {} },
+  {
+    "functionDeclarations": [
+      {
+        "name": "generate_script",
+        "description": "Generates a video script based on a given topic or provided information.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": { "topic": { "type": "STRING", "description": "The topic for the script." } },
+          "required": ["topic"]
+        }
+      },
+      {
+        "name": "generate_images",
+        "description": "Generates a set of images based on descriptive prompts.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {
+            "prompts": {
+              "type": "ARRAY",
+              "description": "An array of 5-7 detailed prompts for image generation.",
+              "items": { "type": "STRING" }
+            }
+          },
+          "required": ["prompts"]
+        }
+      },
+      {
+        "name": "generate_voiceover",
+        "description": "Converts a script text into a voiceover audio.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": { "script": { "type": "STRING", "description": "The script to be converted to speech." } },
+          "required": ["script"]
+        }
+      },
+       {
+        "name": "assemble_video",
+        "description": "Assembles the generated images and voiceover into a final video. This is the final step.",
+        "parameters": {
+          "type": "OBJECT",
+          "properties": {}
+        }
+      }
+    ]
+  }
+];
+
+export async function runVideoAgentTurn(history: ChatMessage[]) {
+    const systemInstruction = `You are "Pulse Video Agent", a conversational AI that helps users create short videos.
+- Your personality is helpful, creative, and slightly informal.
+- You must guide the user step-by-step through the video creation process: Research -> Scripting -> Image Generation -> Voiceover -> Assembly.
+- At each step, you MUST ask for the user's confirmation before proceeding to the next one.
+- When you need to use a tool, your response should ONLY be the function call.
+- When you are providing information or asking for confirmation, your response should be a text content.
+- Start the conversation by introducing yourself and asking the user what topic they want to make a video about.`;
+
+    const formattedHistory = history.map(msg => {
+        if (typeof msg.content === 'string') {
+            return {
+                role: msg.role as 'user' | 'model',
+                parts: [{ text: msg.content }],
+            };
+        }
+        // Handle ToolResponse format
+        return {
+            role: msg.role,
+            parts: [{
+                toolResponse: {
+                    name: msg.content.name,
+                    response: msg.content.content,
+                }
+            }],
+        };
+    });
+
+    const apiCall = () => getAiInstance().models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: formattedHistory,
+        config: {
+            systemInstruction,
+        },
+        tools: videoAgentTools,
+    });
+
+    try {
+        const response = await withRetry<GenerateContentResponse>(apiCall);
+        return response; // We will process this response in the component
+    } catch (error) {
+        console.error("Error in runVideoAgentTurn:", error);
+        throw new Error("حدث خطأ أثناء التحدث مع وكيل الفيديو.");
+    }
+}
