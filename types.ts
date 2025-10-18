@@ -62,7 +62,12 @@ export interface PodcastScriptLine {
   line: string;
 }
 
+export interface ToolResponse {
+    name: string;
+    content: any;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
-  content: string;
+  content: string | ToolResponse;
 }

@@ -664,10 +664,24 @@ export async function runVideoAgentTurn(history: ChatMessage[]) {
 - When you are providing information or asking for confirmation, your response should be a text content.
 - Start the conversation by introducing yourself and asking the user what topic they want to make a video about.`;
 
-    const formattedHistory = history.map(msg => ({
-        role: msg.role as 'user' | 'model',
-        parts: [{ text: msg.content }],
-    }));
+    const formattedHistory = history.map(msg => {
+        if (typeof msg.content === 'string') {
+            return {
+                role: msg.role as 'user' | 'model',
+                parts: [{ text: msg.content }],
+            };
+        }
+        // Handle ToolResponse format
+        return {
+            role: msg.role,
+            parts: [{
+                toolResponse: {
+                    name: msg.content.name,
+                    response: msg.content.content,
+                }
+            }],
+        };
+    });
 
     const apiCall = () => getAiInstance().models.generateContent({
         model: "gemini-2.5-pro",

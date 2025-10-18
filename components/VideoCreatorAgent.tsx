@@ -120,7 +120,10 @@ export const VideoCreatorAgent: React.FC = () => {
                 // Send the tool result back to the agent
                 const toolResponseMessage: ChatMessage = {
                     role: 'user', // It's a 'user' role for function/tool responses
-                    content: JSON.stringify({tool_response: { name: toolName, content: toolResult }})
+                    content: {
+                        name: toolName,
+                        content: toolResult,
+                    }
                 };
 
                 const newHistoryWithToolResponse = [...currentHistory, toolResponseMessage];
@@ -144,15 +147,17 @@ export const VideoCreatorAgent: React.FC = () => {
             <h2 className="text-2xl font-bold text-slate-100 mb-4 text-center">وكيل صانع الفيديو</h2>
 
             <div className="flex-grow overflow-y-auto mb-4 p-2 space-y-4 bg-slate-900/50 rounded-lg">
-                {history.map((msg, index) => (
-                    <div key={index} className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                       { !msg.content.includes('tool_response') &&
-                         <div className={`max-w-[80%] p-3 rounded-xl ${msg.role === 'user' ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
-                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                {history.map((msg, index) => {
+                    if (typeof msg.content !== 'string') return null; // Don't render tool responses
+
+                    return (
+                        <div key={index} className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <div className={`max-w-[80%] p-3 rounded-xl ${msg.role === 'user' ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-slate-700 text-slate-200 rounded-bl-none'}`}>
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                            </div>
                         </div>
-                       }
-                    </div>
-                ))}
+                    );
+                })}
                 {isLoading && !isToolExecuting && (
                      <div className="flex items-end gap-2 flex-row">
                         <div className="p-3 rounded-xl bg-slate-700 text-slate-200 rounded-bl-none">
