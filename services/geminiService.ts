@@ -680,6 +680,12 @@ export async function runVideoAgentTurn(history: ChatMessage[]) {
         contents: formattedHistory,
         config: {
             systemInstruction,
+            temperature: 0, // Set temperature to 0 for more deterministic responses
+            toolConfig: {
+                functionCallingConfig: {
+                    mode: 'ANY', // Force the model to use a tool when available
+                },
+            },
         },
         tools: videoAgentTools,
     });

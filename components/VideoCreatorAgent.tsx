@@ -76,6 +76,7 @@ export const VideoCreatorAgent: React.FC = () => {
         }
 
         if (functionCalls && functionCalls.length > 0) {
+            console.log("Agent is calling a tool:", functionCalls[0]); // Enhanced logging
             const toolCall = functionCalls[0];
             const toolName = toolCall.name;
             const toolArgs = toolCall.args;
