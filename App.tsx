@@ -16,6 +16,7 @@ import { SearchModeToggle } from './components/SearchModeToggle';
 import { LiveServerMessage, Modality, Blob } from '@google/genai';
 import { FileReaderUI } from './components/FileReaderUI';
 import { PodcastCreatorUI } from './components/PodcastCreatorUI';
+import { VideoCreatorAgent } from './components/VideoCreatorAgent';
 
 const MAX_HISTORY_LENGTH = 10;
 const WELCOME_QUERIES = [
@@ -84,7 +85,7 @@ type TranscriptionTurn = {
     isFinal: boolean;
 };
 
-type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast';
+type SearchMode = 'web' | 'image' | 'live' | 'reader' | 'podcast' | 'video-agent';
 
 const App: React.FC = () => {
   // API Key State
@@ -532,6 +533,8 @@ const App: React.FC = () => {
             <FileReaderUI />
           ) : searchMode === 'podcast' ? (
             <PodcastCreatorUI />
+          ) : searchMode === 'video-agent' ? (
+            <VideoCreatorAgent />
           ) : (
             <>
               <SearchBar 
