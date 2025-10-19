@@ -12,7 +12,7 @@ export interface Entity {
 }
 
 // FIX: Export SearchMode type to fix import errors in App.tsx and MainSearchMode.tsx.
-export type SearchMode = 'web' | 'image' | 'video' | 'reader' | 'podcast' | 'live';
+export type SearchMode = 'web' | 'image' | 'video' | 'reader' | 'podcast' | 'live' | 'agent';
 
 export type SummaryLength = 'brief' | 'normal' | 'detailed';
 

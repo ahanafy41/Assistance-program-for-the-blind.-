@@ -30,6 +30,14 @@ export const SearchModeToggle: React.FC<SearchModeToggleProps> = ({ mode, setMod
       >
         توليد صور
       </button>
+       <button
+        onClick={() => setMode('agent')}
+        className={`${baseClasses} ${mode === 'agent' ? activeClasses : inactiveClasses}`}
+        aria-pressed={mode === 'agent'}
+        title="التحويل إلى وضع المساعد الذكي"
+      >
+        المساعد الذكي
+      </button>
       <button
         onClick={() => setMode('video')}
         className={`${baseClasses} ${mode === 'video' ? activeClasses : inactiveClasses}`}

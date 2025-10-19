@@ -9,6 +9,7 @@ import { VideoCreatorUI } from './components/VideoCreatorUI';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { MainSearchMode } from './components/modes/MainSearchMode';
 import { LiveConversationMode } from './components/modes/LiveConversationMode';
+import { AgentMode } from './components/modes/AgentMode';
 
 const MAX_HISTORY_LENGTH = 10;
 const WELCOME_QUERIES = [
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   // Global App State
   const [apiKey, setApiKey] = useState<string | null>(() => localStorage.getItem('gemini_api_key'));
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'dark');
   const [searchMode, setSearchMode] = useState<SearchMode>(() => (localStorage.getItem('searchMode') as SearchMode) || 'web');
   const [history, setHistory] = useState<string[]>([]);
@@ -91,6 +93,7 @@ const App: React.FC = () => {
     localStorage.setItem('gemini_api_key', key);
     setApiKey(key);
     setIsApiKeyModalOpen(false);
+    setApiKeyError(null); // Clear error on successful save
   };
 
   const updateHistory = useCallback((newQuery: string) => {
@@ -101,16 +104,23 @@ const App: React.FC = () => {
     });
   }, []);
   
+  const handleApiKeyError = (message: string) => {
+      setApiKeyError(message);
+      setIsApiKeyModalOpen(true);
+  };
+
   const renderContent = () => {
     switch (searchMode) {
         case 'live':
-            return <LiveConversationMode />;
+            return <LiveConversationMode onApiKeyError={handleApiKeyError} />;
         case 'reader':
-            return <FileReaderUI />;
+            return <FileReaderUI onApiKeyError={handleApiKeyError} />;
         case 'podcast':
-            return <PodcastCreatorUI />;
+            return <PodcastCreatorUI onApiKeyError={handleApiKeyError} />;
         case 'video':
-            return <VideoCreatorUI />;
+            return <VideoCreatorUI onApiKeyError={handleApiKeyError} />;
+        case 'agent':
+            return <AgentMode onApiKeyError={handleApiKeyError} />;
         default:
             return (
                 <MainSearchMode 
@@ -118,6 +128,7 @@ const App: React.FC = () => {
                     history={history}
                     updateHistory={updateHistory}
                     animatedPlaceholder={animatedPlaceholder}
+                    onApiKeyError={handleApiKeyError}
                 />
             );
     }
@@ -130,7 +141,11 @@ const App: React.FC = () => {
             onSave={handleSaveApiKey} 
             initialKey={apiKey || ''}
             isDismissible={!!apiKey}
-            onClose={() => setIsApiKeyModalOpen(false)}
+            errorMessage={apiKeyError}
+            onClose={() => {
+                setIsApiKeyModalOpen(false);
+                setApiKeyError(null); // Clear error on close
+            }}
         />
       )}
       <div className={`min-h-screen font-sans flex flex-col items-center p-4 sm:p-6 lg:p-8 transition-all duration-300 non-printable ${isApiKeyModalOpen && !apiKey ? 'blur-sm pointer-events-none' : ''}`}>
@@ -145,7 +160,10 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2">
                 <ThemeToggle theme={theme} setTheme={setTheme} />
                 <button
-                    onClick={() => setIsApiKeyModalOpen(true)}
+                    onClick={() => {
+                        setApiKeyError(null); // Clear previous errors when manually opening
+                        setIsApiKeyModalOpen(true);
+                    }}
                     className="p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
                     title="تغيير مفتاح API"
                 >

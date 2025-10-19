@@ -6,9 +6,10 @@ interface ApiKeyModalProps {
   initialKey?: string;
   isDismissible: boolean;
   onClose?: () => void;
+  errorMessage?: string | null;
 }
 
-export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onSave, initialKey = '', isDismissible, onClose }) => {
+export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onSave, initialKey = '', isDismissible, onClose, errorMessage }) => {
   const [apiKey, setApiKey] = useState(initialKey);
 
   const handleSave = (e: React.FormEvent) => {
@@ -29,6 +30,12 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onSave, initialKey = '
         <p className="text-slate-400 mb-4 text-sm">
             لأغراض التجربة، يمكنك إدخال مفتاح API الخاص بك هنا. سيتم تخزينه بشكل دائم في متصفحك. يمكنك مسحه في أي وقت من إعدادات المتصفح.
         </p>
+
+        {errorMessage && (
+            <div className="my-4 p-3 bg-red-900/50 border border-red-700 text-red-300 text-sm rounded-lg">
+                <strong>خطأ في التحقق:</strong> {errorMessage}
+            </div>
+        )}
 
         <form onSubmit={handleSave}>
           <label htmlFor="apiKeyInput" className="block text-sm font-medium text-slate-300 mb-2">

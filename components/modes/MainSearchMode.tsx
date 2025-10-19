@@ -11,15 +11,17 @@ import type { Source, Insights, SearchFilters, GeneratedImage, FactCheckResult, 
 import { AdvancedFilters } from '../AdvancedFilters';
 import { ImageResultDisplay } from '../ImageResultDisplay';
 import { RelatedQuestions } from '../RelatedQuestions';
+import { isApiKeyError } from '../../services/api/core';
 
 interface MainSearchModeProps {
     searchMode: 'web' | 'image';
     history: string[];
     updateHistory: (query: string) => void;
     animatedPlaceholder: string;
+    onApiKeyError: (message: string) => void;
 }
 
-export const MainSearchMode: React.FC<MainSearchModeProps> = ({ searchMode, history, updateHistory, animatedPlaceholder }) => {
+export const MainSearchMode: React.FC<MainSearchModeProps> = ({ searchMode, history, updateHistory, animatedPlaceholder, onApiKeyError }) => {
     // Core state
     const [currentQuery, setCurrentQuery] = useState('');
     const [searchResult, setSearchResult] = useState('');
@@ -71,9 +73,13 @@ export const MainSearchMode: React.FC<MainSearchModeProps> = ({ searchMode, hist
         }
         updateHistory(query);
       } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : 'حدث خطأ غير متوقع.';
-          setError(errorMessage);
-          setErrorDetails(err instanceof Error ? err.stack || String(err) : String(err));
+          if (isApiKeyError(err)) {
+              onApiKeyError('فشل التحقق من مفتاح API. قد يكون غير صالح أو منتهي الصلاحية. الرجاء إدخال مفتاح صحيح.');
+          } else {
+              const errorMessage = err instanceof Error ? err.message : 'حدث خطأ غير متوقع.';
+              setError(errorMessage);
+              setErrorDetails(err instanceof Error ? err.stack || String(err) : String(err));
+          }
           console.error(err);
       } finally {
           setIsLoading(false);
@@ -129,11 +135,14 @@ export const MainSearchMode: React.FC<MainSearchModeProps> = ({ searchMode, hist
         const analysis = await analyzeTextWithGemini(textToAnalyze);
         setInsights(analysis);
       } catch (err) {
+        if (isApiKeyError(err)) {
+            onApiKeyError('فشل التحقق من مفتاح API أثناء تحليل النص.');
+        }
         console.error("Failed to analyze text:", err);
       } finally {
         setIsAnalyzing(false);
       }
-    }, []);
+    }, [onApiKeyError]);
   
     const handleFactCheck = useCallback(async () => {
       if (!searchResult.trim() || isFactChecking) return;
@@ -143,16 +152,26 @@ export const MainSearchMode: React.FC<MainSearchModeProps> = ({ searchMode, hist
         const result = await factCheckText(searchResult);
         setFactCheckData(result);
       } catch (err) {
+        if (isApiKeyError(err)) {
+            onApiKeyError('فشل التحقق من مفتاح API أثناء تدقيق الحقائق.');
+        }
         console.error("Failed to fact check text:", err);
       } finally {
         setIsFactChecking(false);
       }
-    }, [searchResult, isFactChecking]);
+    }, [searchResult, isFactChecking, onApiKeyError]);
   
     const fetchRelatedQuestions = useCallback(async (query: string) => {
-        const questions = await getRelatedQuestions(query);
-        setRelatedQuestions(questions);
-    }, []);
+        try {
+            const questions = await getRelatedQuestions(query);
+            setRelatedQuestions(questions);
+        } catch(err) {
+             if (isApiKeyError(err)) {
+                onApiKeyError('فشل التحقق من مفتاح API أثناء جلب الأسئلة المشابهة.');
+            }
+            console.error("Failed to get related questions", err);
+        }
+    }, [onApiKeyError]);
   
     const handleVoiceSearch = () => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
